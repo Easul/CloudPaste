@@ -20,9 +20,47 @@ const userPermissions = ref({
   isAdmin: false, // 是否是管理员
   text: false, // 文本操作权限
   file: false, // 文件操作权限
+  mount: false, // 挂载点操作权限
 });
 // 用于区分登录类型
 const loginType = ref("none"); // 'none', 'admin', 'apikey'
+
+
+// 基于缓存状态初始化登录状态
+const initialLoginStatus = () => {
+  const adminToken = localStorage.getItem("admin_token");
+  const apiKey = localStorage.getItem("api_key");
+  const cachedApiPermissionsData = localStorage.getItem("api_key_permissions");
+
+  if (adminToken && adminToken.length >= 10) {
+    isLoggedIn.value = true;
+    loginType.value = "admin";
+    userPermissions.value = { isAdmin: true, text: true, file: true, mount: true };
+    console.log("Optimistically set to admin login.");
+    return;
+  }
+
+  if (apiKey && apiKey.length > 0) {
+    isLoggedIn.value = true;
+    loginType.value = "apikey";
+    const parsedPermissions = parsePermissions(cachedApiPermissionsData);
+    if (parsedPermissions) {
+      userPermissions.value = {
+        isAdmin: false,
+        text: parsedPermissions.text || false,
+        file: parsedPermissions.file || false,
+        mount: parsedPermissions.mount || false,
+      };
+      console.log("Optimistically set to API key login with cached permissions.");
+    } else {
+      console.log("Optimistically set to API key login, permissions will be fetched/validated.");
+      userPermissions.value = { isAdmin: false, text: false, file: false, mount: false };
+    }
+    return;
+  }
+}
+
+initialLoginStatus();
 
 // 在组件加载时检查是否已登录
 onMounted(() => {
@@ -39,6 +77,18 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener("admin-token-expired", handleLogout);
 });
+
+// Helper to parse permissions safely
+const parsePermissions = (cachedData) => {
+  if (!cachedData) return null;
+  try {
+    return JSON.parse(cachedData);
+  } catch (e) {
+    console.error("Failed to parse cached permissions:", e);
+    return null;
+  }
+};
+
 
 // 验证管理员令牌有效性
 const validateAdminToken = async (token) => {
@@ -83,6 +133,7 @@ const checkLoginStatus = async () => {
         isAdmin: true,
         text: true,
         file: true,
+        mount: true, // 管理员拥有所有权限
       };
       return;
     } catch (error) {
@@ -109,6 +160,7 @@ const checkLoginStatus = async () => {
           isAdmin: false,
           text: permissions.text || false,
           file: permissions.file || false,
+          mount: permissions.mount || false, // 添加mount权限支持
         };
         return;
       } catch (e) {
@@ -129,6 +181,7 @@ const checkLoginStatus = async () => {
     isAdmin: false,
     text: false,
     file: false,
+    mount: false,
   };
   localStorage.removeItem("admin_token");
   localStorage.removeItem("api_key");
@@ -181,6 +234,7 @@ const validateApiKey = async (apiKey) => {
         isAdmin: false,
         text: permissions.text || false,
         file: permissions.file || false,
+        mount: permissions.mount || false, // 添加mount权限支持
       };
 
       // 缓存权限信息
@@ -195,9 +249,9 @@ const validateApiKey = async (apiKey) => {
       // 触发storage事件，通知其他组件权限已更新
       // localStorage事件只在其他窗口触发，这里我们手动触发一个自定义事件
       window.dispatchEvent(
-          new CustomEvent("api-key-permissions-updated", {
-            detail: { permissions },
-          })
+        new CustomEvent("api-key-permissions-updated", {
+          detail: { permissions },
+        })
       );
 
       console.log("API密钥验证成功，权限已更新:", permissions);
@@ -213,15 +267,16 @@ const validateApiKey = async (apiKey) => {
       isAdmin: false,
       text: false,
       file: false,
+      mount: false,
     };
     localStorage.removeItem("api_key");
     localStorage.removeItem("api_key_permissions");
 
     // 通知其他组件权限已清除
     window.dispatchEvent(
-        new CustomEvent("api-key-permissions-updated", {
-          detail: { permissions: null },
-        })
+      new CustomEvent("api-key-permissions-updated", {
+        detail: { permissions: null },
+      })
     );
   }
 };
@@ -238,6 +293,7 @@ const handleLoginSuccess = (result) => {
       isAdmin: true,
       text: true,
       file: true,
+      mount: true, // 管理员拥有所有权限
     };
   }
   // 处理API密钥授权结果
@@ -250,6 +306,7 @@ const handleLoginSuccess = (result) => {
         isAdmin: false,
         text: result.permissions.text || false,
         file: result.permissions.file || false,
+        mount: result.permissions.mount || false, // 添加mount权限支持
       };
       localStorage.setItem("api_key_permissions", JSON.stringify(result.permissions));
     }
@@ -269,6 +326,7 @@ const handleLogout = () => {
     isAdmin: false,
     text: false,
     file: false,
+    mount: false,
   };
   localStorage.removeItem("admin_token");
   localStorage.removeItem("api_key");
@@ -281,6 +339,7 @@ const handleLogout = () => {
   <div class="h-full flex flex-col">
     <!-- 根据登录状态显示登录页面或管理面板 -->
     <AdminLogin v-if="!isLoggedIn" :darkMode="darkMode" @login-success="handleLoginSuccess" class="flex-1" />
-    <AdminPanel v-else :darkMode="darkMode" :loginType="loginType" :permissions="userPermissions" @logout="handleLogout" class="flex-1" />
+    <AdminPanel v-else :darkMode="darkMode" :loginType="loginType" :permissions="userPermissions" @logout="handleLogout"
+      class="flex-1" />
   </div>
 </template>

@@ -51,6 +51,7 @@ RUN mkdir -p /data
 
 # 设置环境变量
 ENV NODE_ENV=production
+ENV LOG_LEVEL=2
 ENV RUNTIME_ENV=docker
 ENV DATA_DIR=/data
 ENV PORT=8787
@@ -61,4 +62,4 @@ ENV ENCRYPTION_SECRET=PLEASE_CHANGE_THIS_IN_PRODUCTION
 EXPOSE 8787
 
 # 启动命令
-CMD ["node", "server.js"] 
+CMD ["node", "--expose-gc", "server.js"]
